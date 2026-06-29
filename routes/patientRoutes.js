@@ -1,10 +1,20 @@
 const express = require('express');
 const router = express.Router();
 // كنجيبو الملف كامل وكنسميوه authController
-const patientController = require('../controllers/patientController'); 
+const { registerPatient,
+        loginPatient, 
+        createAppointment, 
+        addNurse
+    } = require('../controllers/patientController'); 
 
-router.post('/register', patientController.registerPatient);
+router.post('/register', registerPatient);
 
-router.post('/login', patientController.loginPatient);
+router.post('/login', loginPatient);
+
+router.post('/appointment', createAppointment);
+
+router.post('/add-nurse', addNurse);
+
+
 
 module.exports = router;

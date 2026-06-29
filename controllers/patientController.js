@@ -1,6 +1,12 @@
-const Patient = require('../models/newPatient');
+require('dotenv').config();
+const Appointment = require("../models/appointments");
+const Nurse = require("../models/newNurse");
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const Patient = require('../models/newPatient');
+
+
+
 
 // الدالة الخاصة بتسجيل المريض الجديد
 exports.registerPatient = async (req, res) => {
@@ -45,7 +51,7 @@ exports.registerPatient = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error f register:", error);
+        console.error("Error in register:", error);
         // ضروري هاد السطر باش يلا وقع أي خطأ، بوستمان يحبس ويجيك جواب 500
         return res.status(500).json({ message: "An internal server error occurred" });
     }
@@ -91,7 +97,101 @@ exports.loginPatient = async (req, res) => {
             patient: { id: patient._id, fullName: patient.fullName }
         });
     } catch (error) {
-        console.error("Error f login:", error);
+        console.error("Error in login:", error);
+        return res.status(500).json({ message: "An internal server error occurred" });
+    }
+};
+
+
+exports.createAppointment = async (req, res) => {
+    try {
+        const { patientId, doctorId, appointmentDate, appointmentTime, visitType, reason } = req.body;
+
+        // 1. التحقق من الحقول الإجبارية
+        if (!patientId || !doctorId || !appointmentDate || !appointmentTime || !visitType || !reason) {
+            return res.status(400).json({ message: "You must fill all required fields" });
+        }
+
+        const patientExists = await Patient.findById(patientId);
+        if (!patientExists) {
+            return res.status(400).json({ message: "You are not a registered patient" });
+        }
+
+        const appointmentExists = await Appointment.findOne({ status : { $in: ["pending", "confirmed"] } });
+        if (appointmentExists && appointmentExists.status === "pending") {
+            return res.status(400).json({ message: "You have already a pending appointment at this time" });
+        } else if (appointmentExists && appointmentExists.status === "confirmed") {
+            return res.status(400).json({ message: "You have already a confirmed appointment at this time" });
+        }
+
+        const doctorExists = await Patient.findById(doctorId);
+        if (!doctorExists) {
+            return res.status(400).json({ message: "The specified doctor does not exist" });
+        }
+
+        // 2. إنشاء الموعد الجديد ف الداتابيز
+        const newAppointment = new Appointment({
+            patientId,
+            doctorId,
+            appointmentDate,
+            appointmentTime,
+            visitType,
+            reason
+        });
+
+        // حفظ ف الـ Database
+        await newAppointment.save();
+
+        // 3. استجابة بنجاح
+        return res.status(201).json({
+            message: "Appointment created successfully in the database",
+            appointment: newAppointment
+        });
+
+    } catch (error) {
+        console.error("Error in createAppointment:", error);
+        return res.status(500).json({ message: "An internal server error occurred" });
+    }
+};
+
+
+exports.addNurse = async (req, res) => {
+    try {
+        const { fullName, email, age, phone } = req.body;
+
+        // 1. التحقق من الحقول الإجبارية
+        if (!fullName || !email || !age || !phone) {
+            return res.status(400).json({ message: "You must fill all required fields" });
+        }
+
+        // 2. 🔥 التعديل: التأكد واش الإيميل أو الهاتف ديجا مستعملين عند شي ممرضة أخرى
+        const nurseExists = await Nurse.findOne({ 
+            $or: [{ email: email }, { phone: phone }] 
+        });
+        
+        if (nurseExists) {
+            return res.status(400).json({ message: "A nurse with this email and phone number already exists" });
+        }
+        
+        // 3. إنشاء الممرضة الجديدة ف الداتابيز
+        const newNurse = new Nurse({
+            fullName,
+            email,
+            age,
+            phone
+        });
+
+        // حفظ ف الـ Database
+        await newNurse.save();
+
+        // 4. استجابة بنجاح
+        return res.status(201).json({
+            message: "Nurse added successfully in the database",
+            nurse: newNurse
+        });
+
+    } catch (error) {
+        console.error("Error in addNurse:", error);
         return res.status(500).json({ message: "An internal server error occurred" });
     }
 };

@@ -5,45 +5,38 @@ const appointmentSchema = new mongoose.Schema(
     // المريض اللي حجز الموعد
     patientId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: "Patient",
         required: true,
     },
-    // الدكتور اللي غادي يستقبل المريض
-    doctorId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+    fullName: {
+        type: String,
         required: true,
+        trim: true,
     },
-    // تاريخ الموعد (اليوم/الشهر/السنة)
     appointmentDate: {
         type: Date,
         required: true,
     },
-    // ساعة الموعد (مثال: "10:30", "14:15")
     appointmentTime: {
         type: String,
         required: true,
     },
-    // نوع الزيارة
     visitType: {
         type: String,
         required: true,
-        enum: ["Consultation", "Follow-up", "Urgent"],
+        enum: ["Consultation", "Follow-up", "Urgent", "Check-up"],
         default: "Consultation",
     },
-    // سبب الزيارة
     reason: {
         type: String,
         required: true,
         trim: true,
     },
-    // حالة الموعد
     status: {
         type: String,
         enum: ["pending", "confirmed", "cancelled", "completed"],
         default: "pending",
     },
-    // ملاحظات إضافية (خليتها بالكومنت كيف بغيتي)
     // notes: {
     //   type: String,
     //   trim: true,

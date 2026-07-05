@@ -27,6 +27,10 @@ const nurseShema = new mongoose.Schema({
         trim: true,
         length: 255,
     },
+    photo: {
+        type: String,
+        trim: true,
+    },
 },
     {
         timestamps: true, // كتزيد تلقائياً createdAt و updatedAt

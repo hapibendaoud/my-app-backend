@@ -32,7 +32,7 @@ const newPatientSchema = new mongoose.Schema({
         type: String,
         enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"], // هادي كتعني أن القيم المسموح بها هي هادو فقط
         trim: true,
-        default: "" 
+        default: "O+" 
     },
     role: {
         type: String,

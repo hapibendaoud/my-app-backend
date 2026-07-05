@@ -114,11 +114,11 @@ exports.createAppointment = async (req, res) => {
             return res.status(400).json({ message: "You are not a registered patient" });
         }
 
-        const appointmentExists = await Appointment.findOne({ status : { $in: ["pending", "confirmed"] } });
-        if (appointmentExists && appointmentExists.status === "pending") {
+        const appointmentExists = await Appointment.findOne({ status : { $in: ["Pending", "Confirmed"] } });
+        if (appointmentExists && appointmentExists.status === "Pending") {
             return res.status(400).json({ message: "You have already a pending appointment at this time" });
-        } else if (appointmentExists && appointmentExists.status === "confirmed") {
-            return res.status(400).json({ message: "You have already a confirmed appointment at this time" });
+        } else if (appointmentExists && appointmentExists.status === "Confirmed") {
+            return res.status(400).json({ message: "You have already a Confirmed appointment at this time" });
         }
 
         const newAppointment = new Appointment({

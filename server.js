@@ -15,6 +15,9 @@ connectDB();
 app.use('/api/patients', patientRoutes);
 
 
+app.get("/", (req, res) => {
+    res.send("Welcome to the Patient Management API");
+});
 app.get("/test", (req, res) => {
     res.send("Welcome to the Patient Management API");
 });

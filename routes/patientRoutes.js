@@ -33,6 +33,4 @@ router.post('/add-nurse', addNurse);
 
 router.get('/nurses', getNurses)
 
-
-
 module.exports = router;

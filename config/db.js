@@ -1,30 +1,21 @@
+// config/db.js
 const mongoose = require('mongoose');
 
+let isConnected = false; // كنعقلو على حالة الاتصال
+
 const connectDB = async () => {
+    if (isConnected) {
+        console.log('=> Using existing database connection');
+        return;
+    }
+
     try {
-        // 1. إيلا كان ديجا متصل، كمل نيشان بلا ما تفتح اتصال جديد
-        if (mongoose.connection.readyState >= 1) {
-            console.log('Using existing MongoDB connection ♻️');
-            return;
-        }
-
-        // 2. نقراو المتغير لداخل وسط الـ Function باش نضمنوا أنه واجد 100%
-        const dbURI = process.env.MONGO_URI;
-
-        if (!dbURI) {
-            throw new Error("MONGO_URI is not defined in environment variables");
-        }
-
-        // 3. الاتصال مع خيارات الاستقرار لـ Serverless
-        await mongoose.connect(dbURI, {
-            serverSelectionTimeoutMS: 5000, // تسنى 5 ثواني كحد أقصى
-            socketTimeoutMS: 45000,         // إغلاق الكونمسيون إيلا تعطلات بزاف
-        });
-
-        console.log('MongoDB Connected ✅');
+        const db = await mongoose.connect(process.env.MONGO_URI || process.env.DATABASE_URL);
+        isConnected = db.connections[0].readyState;
+        console.log('=> New database connection established');
     } catch (error) {
-        console.error('MongoDB Connection Error ❌:', error.message);
-        // بلاش من process.exit(1) هنا حيت كتحرق السيرفر ف Vercel
+        console.error('Database connection error:', error);
+        throw error;
     }
 };
 

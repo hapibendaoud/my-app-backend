@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const Patient = require('../models/newPatient');
 const Doctor = require('../models/doctor');
 
-// الدالة الخاصة بتسجيل المريض الجديد
+// 1. الدالة الخاصة بتسجيل المريض الجديد (مع تأمين الـ Role)
 exports.registerPatient = async (req, res) => {
     try {
         const { fullName, email, password, phone, birthDate } = req.body;
@@ -28,7 +28,8 @@ exports.registerPatient = async (req, res) => {
             email,
             password: hashedPassword,
             phone,
-            birthDate
+            birthDate,
+            role: "patient" // 🔥 فرض الـ Role حماية من التلاعب يدوياً من الـ Frontend
         });
 
         await newPatient.save();
@@ -48,8 +49,7 @@ exports.registerPatient = async (req, res) => {
     }
 };
 
-// دالة تسجيل الدخول (Login)
-// دالة تسجيل الدخول (Login) مصلحة لبيئة Vercel
+// 2. دالة تسجيل الدخول (Login) مصلحة ومنظمة بالـ User Object المشترك
 exports.loginPatient = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -58,8 +58,10 @@ exports.loginPatient = async (req, res) => {
             return res.status(400).json({ message: "Please provide both email and password" });
         }
 
+        // كنشوفو واش هاد الإيميل ديال الدكتور هو الأول
         const doctor = await Doctor.findOne({ email });
         if (!doctor) {
+            // يلا ماشي دكتور، كنقلبو ف جدول المرضى
             const patient = await Patient.findOne({ email });
             if (!patient) {
                 return res.status(401).json({ message: "Invalid email or password" });
@@ -69,7 +71,6 @@ exports.loginPatient = async (req, res) => {
                 return res.status(401).json({ message: "Invalid email or password" });
             }
             
-            // تأمين الـ role إيلا ما كانش ف الداتابايز كياخد تلقائياً "patient"
             const userRole = patient.role || "patient";
 
             const token = jwt.sign(
@@ -77,20 +78,20 @@ exports.loginPatient = async (req, res) => {
                 process.env.JWT_SECRET,
                 { expiresIn: '1d' }
             );
-            return res.status(200).json({ // رجعناها 200 حيت طلب ناجح ماشي إنشاء حساب جديد
+            return res.status(200).json({ 
                 message: `Welcome Back ${patient.fullName}!`,
                 token: token,
                 role: userRole,
-                patient: { id: patient._id, fullName: patient.fullName }
+                user: { id: patient._id, fullName: patient.fullName, email: patient.email } // ✅ توحيد الكي لـ user
             });
         }
 
+        // يلا لقى الدكتور، كيكمل هنا
         const isMatch = await bcrypt.compare(password, doctor.password);
         if (!isMatch) {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        // تأمين الـ role إيلا ما كانش ف الداتابايز كياخد تلقائياً "doctor"
         const doctorRole = doctor.role || "doctor";
 
         const token = jwt.sign(
@@ -102,7 +103,7 @@ exports.loginPatient = async (req, res) => {
             message: "Welcome Back Doctor!",
             token: token,
             role: doctorRole,
-            patient: { id: doctor._id, fullName: doctor.fullName }
+            user: { id: doctor._id, fullName: doctor.fullName, email: doctor.email } // ✅ تم إصلاح التداخل هنا بنجاح
         });
     } catch (error) {
         console.error("Error in login:", error);
@@ -110,6 +111,7 @@ exports.loginPatient = async (req, res) => {
     }
 };
 
+// 3. دالة إنشاء موعد جديد (المنطق الثلاثي الذكي والصارم)
 exports.createAppointment = async (req, res) => {
     try {
         const { patientId, fullName, appointmentDate, appointmentTime, visitType, reason } = req.body;
@@ -123,11 +125,43 @@ exports.createAppointment = async (req, res) => {
             return res.status(400).json({ message: "You are not a registered patient" });
         }
 
-        const appointmentExists = await Appointment.findOne({ status : { $in: ["Pending", "Confirmed"] } });
-        if (appointmentExists && appointmentExists.status === "Pending") {
-            return res.status(400).json({ message: "You have already a pending appointment at this time" });
-        } else if (appointmentExists && appointmentExists.status === "Confirmed") {
-            return res.status(400).json({ message: "You have already a Confirmed appointment at this time" });
+        // الشرط 1: منع المريض يلا عندو ديجا موعد معلق Pending ف السيستم
+        const pendingAppointment = await Appointment.findOne({ 
+            patientId: patientId,
+            status: "Pending"
+        });
+
+        if (pendingAppointment) {
+            return res.status(400).json({ 
+                message: "You already have a pending appointment. Please wait for the doctor's response." 
+            });
+        }
+
+        // الشرط 2: منع المريض يلا عندو موعد Confirmed خاص بيه ف نفس الوقت
+        const personalConflict = await Appointment.findOne({ 
+            patientId: patientId,
+            appointmentDate: appointmentDate,
+            appointmentTime: appointmentTime,
+            status: "Confirmed"
+        });
+
+        if (personalConflict) {
+            return res.status(400).json({ 
+                message: "You already have a confirmed appointment at this exact date and time." 
+            });
+        }
+
+        // الشرط 3: مقارنة الوقت مع كاع المرضى الآخرين (منع تضارب الساعة للعيادة كاملة)
+        const globalTimeConflict = await Appointment.findOne({
+            appointmentDate: appointmentDate,  
+            appointmentTime: appointmentTime,  
+            status: "Confirmed"                
+        });
+
+        if (globalTimeConflict) {
+            return res.status(400).json({ 
+                message: "This time slot is already booked by another patient. Please choose another time." 
+            });
         }
 
         const newAppointment = new Appointment({
@@ -152,6 +186,7 @@ exports.createAppointment = async (req, res) => {
     }
 };
 
+// 4. دالة إضافة ممرضة جديدة
 exports.addNurse = async (req, res) => {
     try {
         const { fullName, email, age, phone, description } = req.body;
@@ -189,12 +224,13 @@ exports.addNurse = async (req, res) => {
     }
 };
 
+// 5. دالة جلب الممرضات
 exports.getNurses = async (req, res) => {
-    try{
+    try {
         const nurses = await Nurse.find();
 
-        if(!nurses || nurses.length === 0){
-            return res.status(404).json({message: "No Nurses found"})
+        if (!nurses || nurses.length === 0) {
+            return res.status(404).json({ message: "No Nurses found" });
         }
 
         return res.status(200).json(nurses);
@@ -205,6 +241,7 @@ exports.getNurses = async (req, res) => {
     }
 };
 
+// 6. دالة جلب جميع المواعيد (مؤمنة ضد كراش الـ null + قفل الصلاحية للدكتور فقط)
 exports.getAppointments = async (req, res) => {
     try {
         let token = req.headers['token'] || req.headers['authorization']; 
@@ -224,6 +261,11 @@ exports.getAppointments = async (req, res) => {
             return res.status(401).json({ message: "Invalid or expired token" });
         }
 
+        // 🔥 قفل الصلاحية في الـ API: المريض ممنوع يشوف كاع المواعيد
+        if (decoded.role !== 'doctor') {
+            return res.status(403).json({ message: "Access denied. Only doctors can view all appointments." });
+        }
+
         const appointments = await Appointment.find().populate('patientId').lean(); 
         
         if (!appointments || appointments.length === 0) {
@@ -235,18 +277,24 @@ exports.getAppointments = async (req, res) => {
         for (const appot of appointments) {
             const patient = appot.patientId; 
             
-            if (patient && patient.birthDate) {
-                const birthday = new Date(patient.birthDate); 
-                
-                let age = dateNow.getFullYear() - birthday.getFullYear();
-                const monthDifference = dateNow.getMonth() - birthday.getMonth();
-                if (monthDifference < 0 || (monthDifference === 0 && dateNow.getDate() < birthday.getDate())) {
-                    age--;  
-                }
+            if (patient) { // ✅ تأمين الكود ضد كراش الـ null يلا الحساب ديال المريض تمسح
+                if (patient.birthDate) {
+                    const birthday = new Date(patient.birthDate); 
+                    
+                    let age = dateNow.getFullYear() - birthday.getFullYear();
+                    const monthDifference = dateNow.getMonth() - birthday.getMonth();
+                    if (monthDifference < 0 || (monthDifference === 0 && dateNow.getDate() < birthday.getDate())) {
+                        age--;  
+                    }
 
-                appot.age = age; 
+                    appot.age = age; 
+                }
                 appot.fullName = patient.fullName; 
                 appot.phone = patient.phone; 
+            } else {
+                // حل احترافي يلا الحساب مابقاش كاين ف الداتابايز
+                appot.fullName = appot.fullName || "Unknown Patient (Deleted Account)";
+                appot.age = "N/A";
             }
         }
 
@@ -258,6 +306,7 @@ exports.getAppointments = async (req, res) => {
     }
 };
 
+// 7. دالة جلب مواعيد المريض الخاص بذكر (Patient الخاص بالتوكن)
 exports.getPatientAppointments = async (req, res) => {
     try {
         let token = req.headers['token'] || req.headers['authorization']; 
@@ -292,6 +341,7 @@ exports.getPatientAppointments = async (req, res) => {
     }
 };
 
+// 8. دالة تسجيل الدكتور الجديد
 exports.registerDoctor = async (req, res) => {
     try {
         const { fullName, specialization, email, phoneNumber, password, licenseNumber, experience, clinicAddress, bio, consultationFee } = req.body;
@@ -318,7 +368,8 @@ exports.registerDoctor = async (req, res) => {
             experience,
             clinicAddress,
             bio,
-            consultationFee
+            consultationFee,
+            role: "doctor" // فرض الـ Role للامان
         });
 
         await newDoctor.save();
@@ -345,6 +396,7 @@ exports.registerDoctor = async (req, res) => {
     }
 };
 
+// 9. دالة جلب الملف الشخصي (سواء طبيب أو مريض على حساب الـ header)
 exports.getDoctorOrPatient = async (req, res) => {
     try {
         let token = req.headers['token'] || req.headers['authorization']; 
@@ -382,16 +434,27 @@ exports.getDoctorOrPatient = async (req, res) => {
             if (!patient) {
                 return res.status(404).json({ message: "Patient not found" });
             }
-            if(patient.birthDate) {
+            
+            // 🔥 الإصلاح والتأمين هنا:
+            if (patient.birthDate) {
                 let newDate = new Date();
                 let birthDate = new Date(patient.birthDate);
-                let age = newDate.getFullYear() - birthDate.getFullYear();
-                const monthDifference = newDate.getMonth() - birthDate.getMonth();
-                if (monthDifference < 0 || (monthDifference === 0 && newDate.getDate() < birthDate.getDate())) {
-                    age--;
+                
+                // 🚨 كنتأكدو واش التاريخ صالح (Valid Date) وماشي NaN أو كتابة خاطئة
+                if (!isNaN(birthDate.getTime())) {
+                    let age = newDate.getFullYear() - birthDate.getFullYear();
+                    const monthDifference = newDate.getMonth() - birthDate.getMonth();
+                    if (monthDifference < 0 || (monthDifference === 0 && newDate.getDate() < birthDate.getDate())) {
+                        age--;
+                    }
+                    patient.age = age;
+                } else {
+                    patient.age = "N/A"; // إيلا كان التاريخ مخربق ف الداتابايز
                 }
-                patient.age = age;
+            } else {
+                patient.age = "N/A";
             }
+            
             return res.status(200).json(patient);
 
         } else {
@@ -403,12 +466,11 @@ exports.getDoctorOrPatient = async (req, res) => {
         return res.status(500).json({ message: "An internal server error occurred" });
     }
 };
-
+// 10. دالة تحديث حالة الموعد (حكر على الدكتور فقط)
 exports.statusUpdate = async (req, res) => {
     try {
         const appointmentId = req.params.id;
         const { status } = req.body;
-        // ✅ تم إصلاحها لـ let لتفادي كراش السيرفر
         let token = req.headers['token'] || req.headers['authorization']; 
 
         if (!token) {
@@ -426,6 +488,11 @@ exports.statusUpdate = async (req, res) => {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
         } catch (err) {
             return res.status(401).json({ message: "Invalid or expired token" });
+        }
+
+        // 🔥 قفل الصلاحية في الـ API: المريض ممنوع يغير حالة المواعيد يدوياً
+        if (decoded.role !== 'doctor') {
+            return res.status(403).json({ message: "Access denied. Only doctors can update appointment status." });
         }
 
         const appointment = await Appointment.findById(appointmentId);

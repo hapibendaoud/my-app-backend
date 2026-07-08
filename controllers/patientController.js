@@ -49,6 +49,7 @@ exports.registerPatient = async (req, res) => {
 };
 
 // دالة تسجيل الدخول (Login)
+// دالة تسجيل الدخول (Login) مصلحة لبيئة Vercel
 exports.loginPatient = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -67,15 +68,19 @@ exports.loginPatient = async (req, res) => {
             if (!isMatch) {
                 return res.status(401).json({ message: "Invalid email or password" });
             }
+            
+            // تأمين الـ role إيلا ما كانش ف الداتابايز كياخد تلقائياً "patient"
+            const userRole = patient.role || "patient";
+
             const token = jwt.sign(
-                { id: patient._id, role: patient.role },
+                { id: patient._id, role: userRole },
                 process.env.JWT_SECRET,
                 { expiresIn: '1d' }
             );
-            return res.status(201).json({
+            return res.status(200).json({ // رجعناها 200 حيت طلب ناجح ماشي إنشاء حساب جديد
                 message: `Welcome Back ${patient.fullName}!`,
                 token: token,
-                role: patient.role,
+                role: userRole,
                 patient: { id: patient._id, fullName: patient.fullName }
             });
         }
@@ -84,20 +89,24 @@ exports.loginPatient = async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({ message: "Invalid email or password" });
         }
+
+        // تأمين الـ role إيلا ما كانش ف الداتابايز كياخد تلقائياً "doctor"
+        const doctorRole = doctor.role || "doctor";
+
         const token = jwt.sign(
-            { id: doctor._id, role: doctor.role },
+            { id: doctor._id, role: doctorRole },
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
-        return res.status(201).json({
+        return res.status(200).json({
             message: "Welcome Back Doctor!",
             token: token,
-            role: doctor.role,
+            role: doctorRole,
             patient: { id: doctor._id, fullName: doctor.fullName }
         });
     } catch (error) {
         console.error("Error in login:", error);
-        return res.status(500).json({ message: "An internal server error occurred" });
+        return res.status(500).json({ message: "An internal server error occurred", error: error.message });
     }
 };
 
